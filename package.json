@@ -9,7 +9,9 @@
   },
   "dependencies": {
     "core-js": "^3.4.4",
-    "vue": "^2.6.10"
+    "fabric": "^3.6.1",
+    "vue": "^2.6.10",
+    "vuetify": "^2.2.3"
   },
   "devDependencies": {
     "@vue/cli-plugin-babel": "^4.1.0",
@@ -18,6 +20,11 @@
     "babel-eslint": "^10.0.3",
     "eslint": "^5.16.0",
     "eslint-plugin-vue": "^5.0.0",
+    "sass": "^1.19.0",
+    "sass-loader": "^8.0.0",
+    "vuetify": "^2.2.3",
+    "vue-cli-plugin-vuetify": "^0.6.3",
+    "vuetify-loader": "^1.2.2",
     "vue-template-compiler": "^2.6.10"
   },
   "eslintConfig": {
