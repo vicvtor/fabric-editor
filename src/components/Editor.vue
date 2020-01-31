@@ -21,7 +21,7 @@
                         </v-alert>
                         <v-list-item two-line v-for="(item, i) in getCanvasObjects"
                                      :key="i">
-                            <v-list-item-avatar :color=getRegionColor(item)>
+                            <v-list-item-avatar :color=item.stroke>
                                 <span class="white--text headline"></span>
                             </v-list-item-avatar>
                             <v-list-item-content>
@@ -54,14 +54,16 @@
             return {
                 canvas: null,
                 holderId: 'canvas-holder',
-                startEditing: false,
+                creating: false,
+                editing: false,
                 regions: [],
                 pointArray: [],
                 lineArray: [],
                 activeLine: null,
                 activeRegion: null,
                 activeShape: false,
-                imageScale: 1
+                imageScale: 1,
+                strokeColor: '#FFFFFF'
             }
         },
         props: {
@@ -71,13 +73,6 @@
             this.initializeCanvas()
         },
         methods: {
-
-            /**
-             * Возвращает цвет для иконки региона в списке. Игнорирует черный.
-             */
-            getRegionColor(region) {
-                return (region.stroke === '#000000') ? '#FFFFFF' : region.stroke
-            },
 
             /**
              * Инициализация canvas.
@@ -98,10 +93,10 @@
                 });
 
                 this.canvas.on('mouse:down', (options) => {
-                    if (options.target && options.target.id === this.pointArray[0].id) {
+                    if (this.pointArray.length > 0 && options.target && options.target.id === this.pointArray[0].id) {
                         this.generatePolygon(this.pointArray);
                     }
-                    if (this.startEditing) {
+                    if (this.creating) {
                         this.addPoint(options);
                     }
                 });
@@ -122,6 +117,34 @@
                         this.canvas.renderAll();
                     }
                     this.canvas.renderAll();
+                });
+
+                this.canvas.on('object:moving', (options) => {
+                    if (options.target && options.target.type === 'circle') {
+                        var p = options.target;
+                        window.console.log(this.activeShape.points, p)
+                        this.activeShape.points[p.pointIndex] = {
+                            x: p.getCenterPoint().x / this.canvas.getZoom(),
+                            y: p.getCenterPoint().y / this.canvas.getZoom()
+                        }
+                    }
+                });
+
+
+                this.canvas.on('mouse:dblclick', (options) => {
+
+                    if (options.target == null && !this.editing) {
+                        this.drawPolygon()
+                        this.addPoint(options);
+                    } else
+
+
+                    if (options.target && options.target.type === 'polygon') {
+                        this.editPolygon(options.target)
+                    } else {
+                        this.finishEditPolygon()
+                        this.completeEditing()
+                    }
                 });
 
                 // По нажатию на Esc недостроенный полигон отменяется
@@ -159,12 +182,13 @@
                     circle.set({
                         fill: 'red'
                     })
+                    this.strokeColor = this.getRandomColor()
                 }
                 var points1 = [(options.e.layerX / this.canvas.getZoom()), (options.e.layerY / this.canvas.getZoom()), (options.e.layerX / this.canvas.getZoom()), (options.e.layerY / this.canvas.getZoom())];
                 var line = new fabric.Line(points1, {
                     strokeWidth: 2,
-                    fill: '#999999',
-                    stroke: '#999999',
+                    fill: this.strokeColor,
+                    stroke: this.strokeColor,
                     class: 'line',
                     originX: 'center',
                     originY: 'center',
@@ -232,10 +256,12 @@
              * Отрисовка полигона.
              */
             drawPolygon() {
-                this.startEditing = true;
+                this.finishEditPolygon()
+                this.creating = true;
                 this.pointArray = [];
                 this.lineArray = [];
                 this.activeLine = null;
+
             },
 
             /**
@@ -258,12 +284,15 @@
 
                 this.canvas.remove(this.activeShape).remove(this.activeLine);
                 let polygon = new fabric.Polygon(points, {
-                    stroke: this.getRandomColor(),
+                    stroke: this.strokeColor,
                     strokeWidth: 2.5,
                     fill: 'rgba(255, 255 ,255, 0.3)',
                     hasBorders: false,
                     hasControls: false,
-                    description: `Полигон #${this.getCanvasObjects.length + 1}`
+                    selectable: false,
+                    objectCaching: false,
+                    perPixelTargetFind: true,
+                    description: `Полигон #${this.getCanvasObjects.length + 1}`,
                 });
                 this.canvas.add(polygon);
                 this.completeEditing()
@@ -282,21 +311,21 @@
              */
             completeEditing() {
                 this.canvas.selection = true;
-                this.startEditing = false
+                this.creating = false
                 this.pointArray = []
                 this.lineArray = []
                 this.activeLine = null
                 this.activeRegion = null
                 this.activeShape = false
-                if (this.canvas !== null) {
-                    this.canvas
+                this.canvas
                         .getObjects()
                         .filter(it => it.type !== 'polygon' || it.accessory)
                         .forEach(it => this.canvas.remove(it))
-                }
-
             },
 
+            /**
+             * Удаляет полигон.
+             */
             removePolygon(descr) {
                 window.console.log(descr)
                 this.getCanvasObjects
@@ -305,6 +334,40 @@
                         return it.description === descr
                     })
                     .forEach(it => this.canvas.remove(it))
+            },
+
+            editPolygon (polygon) {
+                if (!this.editing) {
+                    this.editing = true
+                    this.activeShape = polygon
+                    polygon.points.forEach((it, index) => {
+                        window.console.log(index)
+                        var circle = new fabric.Circle({
+                            radius: 5,
+                            fill: '#ffffff',
+                            stroke: '#333333',
+                            strokeWidth: 0.5,
+                            left: (it.x / this.canvas.getZoom()),
+                            top: (it.y / this.canvas.getZoom()),
+                            hasBorders: false,
+                            hasControls: false,
+                            originX: 'center',
+                            originY: 'center',
+                            pointIndex: index
+                        });
+                        this.canvas.add(circle)
+                    });
+                    polygon.selectable = false
+                    this.canvas.renderAll()
+                } else {
+                    this.finishEditPolygon()
+                }
+            },
+
+            finishEditPolygon () {
+                this.canvas.getObjects().filter(it => it.type === 'circle').forEach(it => this.canvas.remove(it))
+                this.activeShape = null
+                this.editing = false
             }
         },
         computed: {
@@ -314,7 +377,6 @@
              */
             getCanvasObjects() {
                 if (this.canvas !== null) {
-                    window.console.log(JSON.stringify(this.canvas.getObjects()[0]))
                     return this.canvas.getObjects().filter(it => it.type === 'polygon' && !it.accessory)
                 } else {
                     return []
