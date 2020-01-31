@@ -7,60 +7,103 @@
                 </v-layout>
             </v-col>
             <v-col md="4">
-                <p>rois</p>
+                <v-card class="mx-auto" tile>
+                    <v-toolbar color="light-blue" dark >
+                        <v-toolbar-title>Регионы</v-toolbar-title>
+                        <v-spacer></v-spacer>
+                        <v-btn icon @click="drawPolygon">
+                            <v-icon>mdi-plus</v-icon>
+                        </v-btn>
+                    </v-toolbar>
+                    <v-list class="pa-2">
+                        <v-alert type="info" v-if="this.getCanvasObjects.length === 0">
+                            Размеченные регионы отсутствуют.
+                        </v-alert>
+                        <v-list-item two-line v-for="(item, i) in getCanvasObjects"
+                                     :key="i">
+                            <v-list-item-avatar :color=getRegionColor(item)>
+                                <span class="white--text headline"></span>
+                            </v-list-item-avatar>
+                            <v-list-item-content>
+                                <v-list-item-title>{{item.description}}</v-list-item-title>
+                                <v-list-item-subtitle>{{JSON.stringify(item)}}</v-list-item-subtitle>
+                            </v-list-item-content>
+                            <v-list-item-action>
+                                <v-btn icon>
+                                    <v-icon color="grey lighten-1">mdi-pencil</v-icon>
+                                </v-btn>
+                            </v-list-item-action>
+                            <v-list-item-action>
+                                <v-btn icon @click="removePolygon(item.description)">
+                                    <v-icon color="grey lighten-1">mdi-delete</v-icon>
+                                </v-btn>
+                            </v-list-item-action>
+                        </v-list-item>
+                    </v-list>
+                </v-card>
             </v-col>
         </v-row>
     </v-container>
-
 </template>
 
 <script>
     import {fabric} from 'fabric'
-
     export default {
         name: 'Editor',
         data() {
             return {
                 canvas: null,
                 holderId: 'canvas-holder',
-                painingMode: false,
+                startEditing: false,
                 regions: [],
                 pointArray: [],
                 lineArray: [],
                 activeLine: null,
                 activeRegion: null,
                 activeShape: false,
-                strokeColor: '#000000',
-                fillColor: '#cccccc',
-                opacity: 1
+                imageScale: 1
             }
         },
-        props: {},
+        props: {
+            backgroundImage: null
+        },
         mounted() {
             this.initializeCanvas()
-            this.drawPolygon()
         },
         methods: {
+
+            /**
+             * Возвращает цвет для иконки региона в списке. Игнорирует черный.
+             */
+            getRegionColor(region) {
+                return (region.stroke === '#000000') ? '#FFFFFF' : region.stroke
+            },
+
             /**
              * Инициализация canvas.
              */
             initializeCanvas() {
-                let canvasHolder = document.getElementById(this.holderId)
+                var holder = document.getElementById(this.holderId)
                 this.canvas = new fabric.Canvas('canvas')
-                this.canvas.setWidth(canvasHolder.clientWidth)
-                this.canvas.setHeight(canvasHolder.clientHeight)
+
+                fabric.Image.fromURL(this.backgroundImage, (oImg) => {
+
+                    if (oImg.width > holder.clientWidth) {
+                        oImg.scaleToWidth(holder.clientWidth)
+                    }
+
+                    this.canvas.setWidth(oImg.width * oImg.scaleX)
+                    this.canvas.setHeight(oImg.height * oImg.scaleX)
+                    this.canvas.setBackgroundImage(oImg)
+                });
 
                 this.canvas.on('mouse:down', (options) => {
                     if (options.target && options.target.id === this.pointArray[0].id) {
                         this.generatePolygon(this.pointArray);
                     }
-                    if (this.painingMode) {
+                    if (this.startEditing) {
                         this.addPoint(options);
                     }
-                })
-
-                this.canvas.on('mouse:up', (options) => {
-                    window.console.log(options)
                 });
 
                 this.canvas.on('mouse:move', (options) => {
@@ -79,6 +122,13 @@
                         this.canvas.renderAll();
                     }
                     this.canvas.renderAll();
+                });
+
+                // По нажатию на Esc недостроенный полигон отменяется
+                fabric.util.addListener(document.body, 'keydown', (options) => {
+                    if (options.keyCode === 27) {
+                        this.completeEditing()
+                    }
                 });
 
             },
@@ -140,7 +190,9 @@
                         hasBorders: false,
                         hasControls: false,
                         evented: false,
-                        objectCaching: false
+                        objectCaching: false,
+                        accessory: true
+
                     });
                     this.canvas.remove(this.activeShape);
                     this.canvas.add(polygon1);
@@ -160,7 +212,8 @@
                         hasBorders: false,
                         hasControls: false,
                         evented: false,
-                        objectCaching: false
+                        objectCaching: false,
+                        accessory: true
                     });
                     this.activeShape = polygon;
                     this.canvas.add(polygon);
@@ -179,7 +232,7 @@
              * Отрисовка полигона.
              */
             drawPolygon() {
-                this.painingMode = true;
+                this.startEditing = true;
                 this.pointArray = [];
                 this.lineArray = [];
                 this.activeLine = null;
@@ -190,7 +243,7 @@
              * @param points
              */
             generatePolygon(polygonPoints) {
-                var points = [];
+                let points = [];
                 polygonPoints.forEach((it) => {
                     window.console.log(it)
                     points.push({
@@ -204,29 +257,69 @@
                 });
 
                 this.canvas.remove(this.activeShape).remove(this.activeLine);
-                var polygon = new fabric.Polygon(points, {
-                    stroke: '#333333',
-                    strokeWidth: 0.5,
-                    fill: 'red',
-                    opacity: 1,
+                let polygon = new fabric.Polygon(points, {
+                    stroke: this.getRandomColor(),
+                    strokeWidth: 2.5,
+                    fill: 'rgba(255, 255 ,255, 0.3)',
                     hasBorders: false,
-                    hasControls: false
+                    hasControls: false,
+                    description: `Полигон #${this.getCanvasObjects.length + 1}`
                 });
                 this.canvas.add(polygon);
-
-                this.activeLine = null;
-                this.activeShape = null;
-                this.painingMode = false;
-                this.canvas.selection = true;
+                this.completeEditing()
             },
 
             /**
-             * Случайный цвет.
+             * Возвращает лучайный цвет.
              * @returns {string}
              */
-            randomColor() {
+            getRandomColor() {
                 return "#" + ((1 << 24) * Math.random() | 0).toString(16)
+            },
+
+            /**
+             * Отменяет действие создания полигона.
+             */
+            completeEditing() {
+                this.canvas.selection = true;
+                this.startEditing = false
+                this.pointArray = []
+                this.lineArray = []
+                this.activeLine = null
+                this.activeRegion = null
+                this.activeShape = false
+                if (this.canvas !== null) {
+                    this.canvas
+                        .getObjects()
+                        .filter(it => it.type !== 'polygon' || it.accessory)
+                        .forEach(it => this.canvas.remove(it))
+                }
+
+            },
+
+            removePolygon(descr) {
+                window.console.log(descr)
+                this.getCanvasObjects
+                    .filter(it => {
+                        window.console.log(it.description)
+                        return it.description === descr
+                    })
+                    .forEach(it => this.canvas.remove(it))
             }
+        },
+        computed: {
+            /**
+             * Возвращает массив полигонов, размещенных в canvas
+             * @returns {*[]} - массив полигонов.
+             */
+            getCanvasObjects() {
+                if (this.canvas !== null) {
+                    window.console.log(JSON.stringify(this.canvas.getObjects()[0]))
+                    return this.canvas.getObjects().filter(it => it.type === 'polygon' && !it.accessory)
+                } else {
+                    return []
+                }
+            },
         }
     }
 </script>
